@@ -19,7 +19,7 @@ TMRpcm song;
 // SD libraries
 #include <SD.h>
 #include <SPI.h>
-#define SD_ChipSelectPin 11
+#define SD_SELECT SS
 
 // NOTE PINS
 #define NOTE_SDO 5
@@ -40,6 +40,8 @@ long cur_note_time = 0;
 bool notes[4][8];
 bool song_playing = true;
 
+File noteFile;
+
 // ISR variables
 volatile bool should_change_song = false;
 volatile bool should_turn_on_off = false;
@@ -48,6 +50,13 @@ volatile bool should_turn_on_off = false;
 
 bool getNthBitOfNum(int num, byte n) {
   return (num >> n) & 1;
+}
+
+void byteToArr(unsigned char c, bool b[8])
+{
+  for (byte i = 0; i < 8; i++) {
+    b[i] = (c & (1<<i)) != 0;
+  }
 }
 
 /*************************************
@@ -86,7 +95,6 @@ void turnOnOff() {
   if (song_playing) {
     song.stopPlayback();
     score = 0;
-    resetNoteData();
     song_num -= 1;
   } else {
     changeSong();
@@ -103,7 +111,7 @@ void changeSongISR() {
  ***************************/
 void changeSong() {
   should_change_song = false;
-  // stop playing song, reset score and note data, update song display
+  // stop playing song, reset score data, update song display
   song.stopPlayback();
   song_num += 1;
   if (song_num > NUM_SONGS) {
@@ -111,14 +119,15 @@ void changeSong() {
   }
   score = 0;
   sendSongData(song_num);
-  resetNoteData();
+  loadNoteData();
 
   // start playing next song
-  switch(song_num) {
-    case 1:
-      song.play("file");
-      break;
-  }
+  char str[8];
+  sprintf(str, "%d", song_num);
+  strcat(str, ".wav");
+  song.play(str);
+
+  // update times
   song_start_time = millis();
   cur_note_time = song_start_time;
 }
@@ -126,15 +135,18 @@ void changeSong() {
 /* note data loading/updating */
 
 void loadNoteData() {
-  // TODO
-}
-
-void resetNoteData() {
-  // TODO
+  char str[8];
+  sprintf(str, "%d", song_num);
+  strcat(str, ".txt");
+  noteFile = SD.open(str);
 }
 
 void updateNoteData() {
-  // TODO
+  for (byte i = 0; i < 4; i++) {
+    if (noteFile.available()) {
+      byteToArr(noteFile.read(), notes[i]);
+    }
+  }
 }
 
 /* note data sending */
@@ -261,6 +273,18 @@ void setup() {
   // attach interrupts to on/off and song sel inputs
   attachInterrupt(digitalPinToInterrupt(2), turnOnOffISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(3), changeSongISR, RISING);
+
+  // initialize SD card
+  Serial.begin(9600);
+  Serial.print("Initializing SD card...");
+  // On the Ethernet Shield, CS is pin 4. It's set as an output by default. // Note that even if it's not used as the CS pin, the hardware SS pin
+  // (10 on most Arduino boards, 53 on the Mega) must be left as an output // or the SD library functions will not work.
+  pinMode(SD_SELECT, OUTPUT);
+  if (!SD.begin(SD_SELECT)) {
+    Serial.println("initialization failed!");
+    return;
+  }
+  Serial.println("initialization done.");
 
   song.speakerPin = 9;
   changeSong();
