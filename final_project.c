@@ -117,7 +117,8 @@ void changeSong() {
   switch(song_num) {
     case 1:
       song.play("file");
-  break;
+      break;
+  }
   song_start_time = millis();
   cur_note_time = song_start_time;
 }

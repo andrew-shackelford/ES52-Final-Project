@@ -119,7 +119,7 @@ def display():
             cur_time += 0.025
             clear_lines()
             for j in range(8):
-                print_line(led_list[0][index][j], led_list[1][index][j], led_list[2][index][j], led_list[3][index][j])
+                print_line(led_list[0][index][7-j], led_list[1][index][7-j], led_list[2][index][7-j], led_list[3][index][7-j])
             print(time.time() - start_time)
             index += 1
 

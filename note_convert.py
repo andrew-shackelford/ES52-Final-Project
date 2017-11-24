@@ -10,7 +10,7 @@ into LED frames for the Arduino to read.
 """
 
 import sys
-NOTE_SEP_TIME = 0.15 # number of seconds between note rows
+NOTE_SEP_TIME = 0.25 # number of seconds between note rows
 
 def convert():
     note_list = [[], [], [], []]
@@ -21,7 +21,8 @@ def convert():
             for line in f:
                 time = float(line)
                 note_list[i].append(time)
-
+            if len(note_list[i]) == 0:
+                note_list[i].append(-100.)
 
     # write out the LED frames for each set of notes as 4 sequential bytes,
     # with 1 byte per column and 25 ms per frame (40 Hz)
@@ -33,22 +34,25 @@ def convert():
                 out = 0
                 for note in note_list[i]:
                     if time - 1*NOTE_SEP_TIME < note <= time:
-                        out += 1
-                    if time < note <= time + 1*NOTE_SEP_TIME:
-                        out += 2
-                    if time + 1*NOTE_SEP_TIME < note <= time + 2*NOTE_SEP_TIME:
-                        out += 4
-                    if time + 2*NOTE_SEP_TIME < note <= time + 3*NOTE_SEP_TIME:
-                        out += 8
-                    if time + 3*NOTE_SEP_TIME < note <= time + 4*NOTE_SEP_TIME:
-                        out += 16
-                    if time + 4*NOTE_SEP_TIME < note <= time + 5*NOTE_SEP_TIME:
-                        out += 32
-                    if time + 5*NOTE_SEP_TIME < note <= time + 6*NOTE_SEP_TIME:
-                        out += 64
-                    if time + 6*NOTE_SEP_TIME < note <= time + 7*NOTE_SEP_TIME:
                         out += 128
-                f.write(chr(out))
+                    if time < note <= time + 1*NOTE_SEP_TIME:
+                        out += 64
+                    if time + 1*NOTE_SEP_TIME < note <= time + 2*NOTE_SEP_TIME:
+                        out += 32
+                    if time + 2*NOTE_SEP_TIME < note <= time + 3*NOTE_SEP_TIME:
+                        out += 16
+                    if time + 3*NOTE_SEP_TIME < note <= time + 4*NOTE_SEP_TIME:
+                        out += 8
+                    if time + 4*NOTE_SEP_TIME < note <= time + 5*NOTE_SEP_TIME:
+                        out += 4
+                    if time + 5*NOTE_SEP_TIME < note <= time + 6*NOTE_SEP_TIME:
+                        out += 2
+                    if time + 6*NOTE_SEP_TIME < note <= time + 7*NOTE_SEP_TIME:
+                        out += 1
+                try:
+                    f.write(chr(out))
+                except:
+                    print(out)
             time += 0.025
 
 def main():
