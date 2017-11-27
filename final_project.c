@@ -10,12 +10,6 @@
  * using 32 LEDs and 4 push-buttons.         *
  ********************************************/
 
-// music libraries
-#include <pcmConfig.h>
-#include <pcmRF.h>
-#include <TMRpcm.h>
-TMRpcm song;
-
 // SD libraries
 #include <SD.h>
 #include <SPI.h>
@@ -40,8 +34,7 @@ long cur_note_time = 0;
 bool song_playing = true;
 
 int note_index;
-byte first_notes[8000][4];
-byte second_notes[7000][4];
+byte all_notes[15000][4];
 bool notes[4][8];
 bool past_notes[4][8];
 File noteFile;
@@ -100,7 +93,6 @@ void turnOnOffISR() {
 void turnOnOff() {
   should_turn_on_off = false;
   if (song_playing) {
-    song.stopPlayback();
     score = 0;
     note_index = 0;
     song_num -= 1;
@@ -120,7 +112,6 @@ void changeSongISR() {
 void changeSong() {
   should_change_song = false;
   // stop playing song, reset score data, update song display
-  song.stopPlayback();
   song_num += 1;
   if (song_num > NUM_SONGS) {
     song_num = 1;
@@ -133,7 +124,6 @@ void changeSong() {
   char str[8];
   sprintf(str, "%d", song_num);
   strcat(str, ".wav");
-  song.play(str);
 
   // update times
   song_start_time = millis();
@@ -149,22 +139,11 @@ void loadNoteData() {
   strcat(str, ".txt");
   noteFile = SD.open(str);
   byte index = 0;
-  for (int i = 0; i < 8000; i++) {
+  for (int i = 0; i < 15000; i++) {
     if (noteFile.available()) {
-      first_notes[i][index] = noteFile.read();
+      all_notes[i][index] = noteFile.read();
     } else {
-      first_notes[i][index] = 0x00;
-    } 
-    index++;
-    if (index > 3) {
-        index = 0;
-    }
-  }
-  for (int i = 8000; i < 15000; i++) {
-    if (noteFile.available()) {
-      second_notes[i][index] = noteFile.read();
-    } else {
-      second_notes[i][index] = 0x00;
+      all_notes[i][index] = 0x00;
     } 
     index++;
     if (index > 3) {
@@ -178,11 +157,7 @@ void updateNoteData() {
     for (byte j = 0; j < 8; j++) {
       past_notes[i][j] = notes[i][j];
     }
-    if (note_index < 8000) {
-      byteToArr(first_notes[note_index][i], notes[i]);
-    } else {
-      byteToArr(second_notes[note_index][i], notes[i]);
-    }
+    byteToArr(all_notes[note_index][i], notes[i]);
   }
 }
 
@@ -323,7 +298,6 @@ void setup() {
   }
   Serial.println("initialization done.");
 
-  song.speakerPin = 9;
   changeSong();
 }
 
