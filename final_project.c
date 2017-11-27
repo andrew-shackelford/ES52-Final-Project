@@ -37,9 +37,11 @@ int score = 0;
 byte song_num = 0;
 long song_start_time = 0;
 long cur_note_time = 0;
-bool notes[4][8];
 bool song_playing = true;
 
+int noteIndex;
+byte allNotes[15000][4];
+bool notes[4][8];
 File noteFile;
 
 // ISR variables
@@ -95,6 +97,7 @@ void turnOnOff() {
   if (song_playing) {
     song.stopPlayback();
     score = 0;
+    noteIndex = 0;
     song_num -= 1;
   } else {
     changeSong();
@@ -130,6 +133,7 @@ void changeSong() {
   // update times
   song_start_time = millis();
   cur_note_time = song_start_time;
+  noteIndex = 0;
 }
 
 /* note data loading/updating */
@@ -139,13 +143,23 @@ void loadNoteData() {
   sprintf(str, "%d", song_num);
   strcat(str, ".txt");
   noteFile = SD.open(str);
+  byte index = 0;
+  for (int i = 0; i < 15000; i++) {
+    if (noteFile.available()) {
+      allNotes[i][index] = noteFile.read();
+    } else {
+      allNotes[i][index] = 0x00;
+    } 
+    index++;
+    if (index > 3) {
+        index = 0;
+    }
+  }
 }
 
 void updateNoteData() {
   for (byte i = 0; i < 4; i++) {
-    if (noteFile.available()) {
-      byteToArr(noteFile.read(), notes[i]);
-    }
+    byteToArr(allNotes[noteIdx], notes[i]);
   }
 }
 
@@ -301,6 +315,7 @@ void loop() {
     if (millis() > cur_note_time+25) {
       // every 25 ms, send out a new frame of note data
       cur_note_time += 25;
+      noteIndex ++;
       updateNoteData();
       updateNoteReference();
       if (checkNoteHit()) {
