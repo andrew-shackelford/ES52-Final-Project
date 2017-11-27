@@ -39,9 +39,11 @@ long song_start_time = 0;
 long cur_note_time = 0;
 bool song_playing = true;
 
-int noteIndex;
-byte allNotes[15000][4];
+int note_index;
+byte first_notes[8000][4];
+byte second_notes[7000][4];
 bool notes[4][8];
+bool past_notes[4][8];
 File noteFile;
 
 // ISR variables
@@ -54,6 +56,9 @@ bool getNthBitOfNum(int num, byte n) {
   return (num >> n) & 1;
 }
 
+/***********************************
+ * converts a byte to a bool array *
+ ***********************************/
 void byteToArr(unsigned char c, bool b[8])
 {
   for (byte i = 0; i < 8; i++) {
@@ -97,7 +102,7 @@ void turnOnOff() {
   if (song_playing) {
     song.stopPlayback();
     score = 0;
-    noteIndex = 0;
+    note_index = 0;
     song_num -= 1;
   } else {
     changeSong();
@@ -133,7 +138,7 @@ void changeSong() {
   // update times
   song_start_time = millis();
   cur_note_time = song_start_time;
-  noteIndex = 0;
+  note_index = 0;
 }
 
 /* note data loading/updating */
@@ -144,11 +149,22 @@ void loadNoteData() {
   strcat(str, ".txt");
   noteFile = SD.open(str);
   byte index = 0;
-  for (int i = 0; i < 15000; i++) {
+  for (int i = 0; i < 8000; i++) {
     if (noteFile.available()) {
-      allNotes[i][index] = noteFile.read();
+      first_notes[i][index] = noteFile.read();
     } else {
-      allNotes[i][index] = 0x00;
+      first_notes[i][index] = 0x00;
+    } 
+    index++;
+    if (index > 3) {
+        index = 0;
+    }
+  }
+  for (int i = 8000; i < 15000; i++) {
+    if (noteFile.available()) {
+      second_notes[i][index] = noteFile.read();
+    } else {
+      second_notes[i][index] = 0x00;
     } 
     index++;
     if (index > 3) {
@@ -159,7 +175,14 @@ void loadNoteData() {
 
 void updateNoteData() {
   for (byte i = 0; i < 4; i++) {
-    byteToArr(allNotes[noteIdx], notes[i]);
+    for (byte j = 0; j < 8; j++) {
+      past_notes[i][j] = notes[i][j];
+    }
+    if (note_index < 8000) {
+      byteToArr(first_notes[note_index][i], notes[i]);
+    } else {
+      byteToArr(second_notes[note_index][i], notes[i]);
+    }
   }
 }
 
@@ -315,7 +338,7 @@ void loop() {
     if (millis() > cur_note_time+25) {
       // every 25 ms, send out a new frame of note data
       cur_note_time += 25;
-      noteIndex ++;
+      note_index++;
       updateNoteData();
       updateNoteReference();
       if (checkNoteHit()) {
