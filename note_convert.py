@@ -10,7 +10,7 @@ into LED frames for the Arduino to read.
 """
 
 import sys
-NOTE_SEP_TIME = 0.25 # number of seconds between note rows
+NOTE_SEP_TIME = 0.15 # number of seconds between note rows
 
 def convert():
     note_list = [[], [], [], []]

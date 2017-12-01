@@ -13,12 +13,12 @@
 // SD libraries
 #include <SD.h>
 #include <SPI.h>
-#define SD_SELECT SS
+#define SD_SELECT 53
 
 // NOTE PINS
-#define NOTE_SDO 5
-#define NOTE_CLK 6
-#define NOTE_LOAD 12
+#define NOTE_SDO 52
+#define NOTE_CLK 51
+#define NOTE_LOAD 50
 
 // SCORE PINS
 #define SCORE_CLK 4
@@ -33,10 +33,7 @@ long song_start_time = 0;
 long cur_note_time = 0;
 bool song_playing = true;
 
-int note_index;
-byte all_notes[15000][4];
 bool notes[4][8];
-bool past_notes[4][8];
 File noteFile;
 
 // ISR variables
@@ -94,7 +91,6 @@ void turnOnOff() {
   should_turn_on_off = false;
   if (song_playing) {
     score = 0;
-    note_index = 0;
     song_num -= 1;
   } else {
     changeSong();
@@ -128,7 +124,6 @@ void changeSong() {
   // update times
   song_start_time = millis();
   cur_note_time = song_start_time;
-  note_index = 0;
 }
 
 /* note data loading/updating */
@@ -138,26 +133,11 @@ void loadNoteData() {
   sprintf(str, "%d", song_num);
   strcat(str, ".txt");
   noteFile = SD.open(str);
-  byte index = 0;
-  for (int i = 0; i < 15000; i++) {
-    if (noteFile.available()) {
-      all_notes[i][index] = noteFile.read();
-    } else {
-      all_notes[i][index] = 0x00;
-    } 
-    index++;
-    if (index > 3) {
-        index = 0;
-    }
-  }
 }
 
 void updateNoteData() {
   for (byte i = 0; i < 4; i++) {
-    for (byte j = 0; j < 8; j++) {
-      past_notes[i][j] = notes[i][j];
-    }
-    byteToArr(all_notes[note_index][i], notes[i]);
+    byteToArr(noteFile.read(), notes[i]);
   }
 }
 
@@ -182,7 +162,7 @@ void sendNoteData() {
 
     // send column data
     for (byte y = 0; y < 8; y++) {
-      if (notes[x][y]) {
+      if (notes[3-x][7-y]) {
         setPinHigh(NOTE_SDO);
       } else {
         setPinLow(NOTE_SDO);
@@ -312,7 +292,6 @@ void loop() {
     if (millis() > cur_note_time+25) {
       // every 25 ms, send out a new frame of note data
       cur_note_time += 25;
-      note_index++;
       updateNoteData();
       updateNoteReference();
       if (checkNoteHit()) {
