@@ -13,6 +13,8 @@
 // SD libraries
 #include <SD.h>
 #include <SPI.h>
+#include <Audio.h>
+#include <DueTimer.h>
 #define SD_SELECT 53
 
 // NOTE PINS
@@ -27,14 +29,19 @@
 
 // global variables for keeping track of songs and notes
 const byte NUM_SONGS = 1;
+const int BUFFER_SIZE = 1024; // number of audio samples to read
+const int VOLUME = 1024;
 int score = 0;
 byte song_num = 0;
 long song_start_time = 0;
 long cur_note_time = 0;
 bool song_playing = true;
+int column = 0;
 
+short audio_buffer[BUFFER_SIZE];
 bool notes[4][8];
 File noteFile;
+File musicFile;
 
 // ISR variables
 volatile bool should_change_song = false;
@@ -148,31 +155,29 @@ void updateNoteData() {
  * for a 4x8 multiplexed LED array                *
  **************************************************/
 void sendNoteData() {
-  for (byte x = 0; x < 4; x++) {
-
-    // send row data
-    for (byte r = 0; r < 4; r++) {
-      if (r == x) {
-        setPinHigh(NOTE_SDO);
-      } else {
-        setPinLow(NOTE_SDO);
-      }
-      sendClock(NOTE_CLK);
-    }
-
-    // send column data
-    for (byte y = 0; y < 8; y++) {
-      if (notes[3-x][7-y]) {
-        setPinHigh(NOTE_SDO);
-      } else {
-        setPinLow(NOTE_SDO);
-      }
-      sendClock(NOTE_CLK);
-    }
-    sendClock(NOTE_LOAD);
-    delay(1); // wait 1 ms for persistence of vision
-    
+  if (column > 3) {
+    column = 0;
   }
+  for (byte r = 0; r < 4; r++) {
+    if (r == column) {
+      setPinHigh(NOTE_SDO);
+    } else {
+      setPinLow(NOTE_SDO);
+    }
+    sendClock(NOTE_CLK);
+  }
+
+  // send column data
+  for (byte y = 0; y < 8; y++) {
+    if (notes[3-column][7-y]) {
+      setPinHigh(NOTE_SDO);
+    } else {
+      setPinLow(NOTE_SDO);
+    }
+    sendClock(NOTE_CLK);
+  }
+  sendClock(NOTE_LOAD);
+  column++;
 }
 
 /* score data sending */
@@ -278,6 +283,8 @@ void setup() {
   }
   Serial.println("initialization done.");
 
+  Timer3.attachInterrupt(sendNoteData).start(1000);
+
   changeSong();
 }
 
@@ -297,8 +304,13 @@ void loop() {
       if (checkNoteHit()) {
         score += 1;
       }
-    }
-    sendNoteData();
     sendScoreData();
+
+    // send audio
+    musicFile.read(audio_buffer, sizeof(audio_buffer));
+    Audio.prepare(audio_buffer, BUFFER_SIZE, VOLUME);
+    Audio.write(audio_buffer, BUFFER_SIZE);
+
+    }
   }
 }
