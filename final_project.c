@@ -18,23 +18,37 @@
 #define SD_SELECT 53
 
 // NOTE PINS
-#define NOTE_SDO 52
-#define NOTE_CLK 51
-#define NOTE_LOAD 50
+#define NOTE_SDO 48
+#define NOTE_CLK 36
+#define NOTE_LOAD 46
 
 // SCORE PINS
 #define SCORE_CLK 4
 #define SCORE_SDO 0
 #define SCORE_LOAD 1
 
+// INT PINS
+#define CHANGE_SONG_INT_PIN 49
+#define ON_OFF_INT_PIN 26
+
+// REF PINS
+#define NOTE_REF_OUT 2
+#define NOTE_CHECK_IN 47
+
+// VOLTAGE REFERENCES
+const int references[4] = {144, 97, 69, 34};
+
 // global variables for keeping track of songs and notes
 const byte NUM_SONGS = 1;
 const int BUFFER_SIZE = 1024; // number of audio samples to read
 const int VOLUME = 1024;
+
 int score = 0;
 byte song_num = 0;
-long song_start_time = 0;
-long cur_note_time = 0;
+bool note_checked = false;
+bool should_check_note_hit = false;
+
+long cur_frame_time = 0;
 bool song_playing = true;
 int column = 0;
 
@@ -120,7 +134,6 @@ void changeSong() {
     song_num = 1;
   }
   score = 0;
-  sendSongData(song_num);
   loadNoteData();
 
   // start playing next song
@@ -128,9 +141,13 @@ void changeSong() {
   sprintf(str, "%d", song_num);
   strcat(str, ".wav");
 
+  Audio.begin(44100, 100);
+  musicFile = SD.open(str);
+  cur_frame_time = millis();
+
+  updateNoteData();
+
   // update times
-  song_start_time = millis();
-  cur_note_time = song_start_time;
 }
 
 /* note data loading/updating */
@@ -146,6 +163,14 @@ void updateNoteData() {
   for (byte i = 0; i < 4; i++) {
     byteToArr(noteFile.read(), notes[i]);
   }
+  /*
+  if (notes[0][7] || notes[1][7] || notes[2][7] || notes[3][7]) {
+    should_check_note_hit = true;
+    note_checked = false;
+  } else {
+    should_check_note_hit = false;
+  }
+  */
 }
 
 /* note data sending */
@@ -177,6 +202,18 @@ void sendNoteData() {
     sendClock(NOTE_CLK);
   }
   sendClock(NOTE_LOAD);
+
+  switch (column) {
+    case 0:
+      sendDigit(score % 100, column);
+      break;
+    case 1:
+      sendDigit((score/10) % 10, column);
+      break;
+    case 2:
+      sendDigit(score/100, column);
+      break;
+  }
   column++;
 }
 
@@ -185,46 +222,39 @@ void sendNoteData() {
 /**********************************************
  * send out score data to the 3-digit display *
  **********************************************/
-void sendScoreData() {
-  for (byte i = 1; i <= 3; i++) {
-    // send low bits to preface digit address
-    setPinLow(SCORE_SDO);
-    for (byte x = 0; x < 6; x++) {
-      sendClock(SCORE_CLK);
-    }
-    
-    // send digit address
-    switch(i) {
-      case 1:
-        sendClock(SCORE_CLK);
-        sendClock(SCORE_CLK);
-        break;
-      case 2:
-        sendClock(SCORE_CLK);
-        setPinHigh(SCORE_SDO);
-        sendClock(SCORE_CLK);
-        break;
-      case 3:
-        setPinHigh(SCORE_SDO);
-        sendClock(SCORE_CLK);
-        setPinLow(SCORE_SDO);
-        sendClock(SCORE_CLK);
-        break; 
-    }
 
-    // send digit data
-    byte score_digit = score / (10*i);
-    for (byte j = 7; j >= 0; j--) {
-      if (getNthBitOfNum(score_digit, j)) {
-        setPinHigh(SCORE_SDO);
-        sendClock(SCORE_CLK);
-      } else {
-        setPinLow(SCORE_SDO);
-        sendClock(SCORE_CLK);
-      }
-    }
-    sendClock(SCORE_LOAD);
+void sendDigit(int n, int d) {
+  setPinLow(SCORE_SDO);
+  for (int i = 2; i > d; i--) {
+    sendClock(SCORE_CLK);
   }
+  setPinHigh(SCORE_SDO);
+  sendClock(SCORE_CLK);
+  setPinLow(SCORE_SDO);
+  for (int i = 0; i < d; i++) {
+    sendClock(SCORE_CLK);
+  }
+  setPinLow(SCORE_SDO);
+  for (int i = 0; i < 7; i++) {
+    sendClock(SCORE_CLK);
+  }
+  setPinHigh(SCORE_SDO);
+  sendClock(SCORE_CLK);
+  bool b[8];
+  //numberToSevenSegment(n, b);
+  for (int i = 7; i >= 0; i--) {
+    if (b[i]) {
+      setPinHigh(SCORE_SDO);
+    } else {
+      setPinLow(SCORE_SDO);
+    }
+    sendClock(SCORE_CLK);
+  }
+
+
+
+  sendClock(SCORE_LOAD);
+
 }
 
 /* song data sending */
@@ -249,7 +279,13 @@ void sendSongData(int song_num) {
  * comparison to user input             *
  ****************************************/
 void updateNoteReference() {
-  // TODO
+  int outRef = 0;
+  for (int i = 0; i < 4; i++) {
+    if (notes[i][7]) {
+      outRef += references[i];
+    }
+  }
+  analogWrite(NOTE_REF_OUT, outRef);
 }
 
 /*****************************************
@@ -257,25 +293,46 @@ void updateNoteReference() {
  * reference output to see if user       *
  * hit or missed note                    *
  *****************************************/
-bool checkNoteHit() {
-  return false; // TODO
+void checkNoteHit() {
+  // if we should check a note hit and we have not checked it before,
+  // check it and increment the score if we hit it
+  if (should_check_note_hit) {
+    if (!note_checked) {
+      if (!digitalRead(NOTE_CHECK_IN)) { // note check is valid
+        score += 1;
+        Serial.println(score);
+      }
+    }
+    note_checked = true;
+  } else {
+    // otherwise, check to see if we pressed a note
+    // when there was no valid note to press,
+    // and if we did decrement the score
+    if (digitalRead(NOTE_CHECK_IN)) { // note check is not valid
+      score -= 1;
+      Serial.println(score);
+    }
+  }
 }
 
 
 void setup() {
   // set our output pins
-  setOutputPinRange(0, 1);
-  setOutputPinRange(4, 13);
+  pinMode(SD_SELECT, OUTPUT);
+  pinMode(NOTE_SDO, OUTPUT);
+  pinMode(NOTE_CLK, OUTPUT);
+  pinMode(NOTE_LOAD, OUTPUT);
 
-  // attach interrupts to on/off and song sel inputs
-  attachInterrupt(digitalPinToInterrupt(2), turnOnOffISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(3), changeSongISR, RISING);
+  pinMode(NOTE_CHECK_IN, INPUT);
+  pinMode(NOTE_REF_OUT, OUTPUT);
+
+  // attach interrupts to on/off and change song inputs
+  //attachInterrupt(digitalPinToInterrupt(ON_OFF_INT_PIN), turnOnOffISR, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(CHANGE_SONG_INT_PIN), changeSongISR, RISING);
 
   // initialize SD card
   Serial.begin(9600);
   Serial.print("Initializing SD card...");
-  // On the Ethernet Shield, CS is pin 4. It's set as an output by default. // Note that even if it's not used as the CS pin, the hardware SS pin
-  // (10 on most Arduino boards, 53 on the Mega) must be left as an output // or the SD library functions will not work.
   pinMode(SD_SELECT, OUTPUT);
   if (!SD.begin(SD_SELECT)) {
     Serial.println("initialization failed!");
@@ -283,34 +340,35 @@ void setup() {
   }
   Serial.println("initialization done.");
 
-  Timer3.attachInterrupt(sendNoteData).start(1000);
+  Timer3.attachInterrupt(sendNoteData).start(1000); // multiplexing timer
 
+  // start the first song
   changeSong();
 }
 
 void loop() {
+  /*
   if (should_turn_on_off) {
     turnOnOff();
   }
   if (should_change_song) {
     changeSong();
   }
+  */
   if (song_playing) {
-    if (millis() > cur_note_time+25) {
+    if (millis() > cur_frame_time+25) {
       // every 25 ms, send out a new frame of note data
-      cur_note_time += 25;
+      cur_frame_time += 25;
       updateNoteData();
       updateNoteReference();
-      if (checkNoteHit()) {
-        score += 1;
-      }
-    sendScoreData();
+      checkNoteHit();
+      //sendScoreData();
+    }
 
     // send audio
     musicFile.read(audio_buffer, sizeof(audio_buffer));
     Audio.prepare(audio_buffer, BUFFER_SIZE, VOLUME);
     Audio.write(audio_buffer, BUFFER_SIZE);
 
-    }
   }
 }
