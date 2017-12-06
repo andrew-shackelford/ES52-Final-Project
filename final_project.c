@@ -25,20 +25,20 @@
 #define NOTE_LOAD 46
 
 // SCORE PINS
-#define SCORE_CLK 4
-#define SCORE_SDO 0
-#define SCORE_LOAD 1
+#define SCORE_CLK 35
+#define SCORE_SDO 30
+#define SCORE_LOAD 31
 
 // INT PINS
-#define CHANGE_SONG_INT_PIN 49
-#define NOTE_INT_PIN 47
+#define CHANGE_SONG_INT_PIN 22
+#define NOTE_INT_PIN 24
 
 // VOLTAGE REFERENCES
 #define NOTE_REF_OUT 2
 const int REFERENCES[4] = {144, 97, 69, 34}; // out of 255
 
 // CONSTANTS
-const int NUM_SONGS = 7;
+const int NUM_SONGS = 8;
 const int BUFFER_SIZE = 1024; // number of audio samples to read
 const int VOLUME = 1024;
 
@@ -120,7 +120,14 @@ void changeSong() {
 
   // update start time
   cur_frame_time = millis();
+
+  // skip the first few frames to get the notes
+  // and music in sync
+  for (int i = 0; i < 7; i++) {
+    updateNoteData();
+  }
   song_playing = true;
+
 }
 
 /*****************************************
@@ -135,7 +142,11 @@ void checkNoteHit() {
     if (notes[0][7] || notes[1][7] || notes[2][7] || notes[3][7]) {
       // the player has pressed the button correctly,
       // increment the score
-      score++;
+      if (score < 999) {
+        score++;
+      } else {
+        score = 999;
+      }
     } else {
       // the button press is correct but there are no notes,
       // so don't change the score
@@ -152,7 +163,11 @@ void checkNoteHit() {
     } else {
       // the player pressed the button when there was not a note,
       // so penalize them a point
-      score--;
+      if (score > 0) {
+        score--;
+      } else {
+        score = 0;
+      }
     }
   }
 }
@@ -164,7 +179,6 @@ void loadSongData() {
   sprintf(str, "%d", song_num);
   strcat(str, ".wav");
 
-  Audio.begin(44100, 100);
   music_file = SD.open(str);
 }
 
@@ -202,7 +216,7 @@ void sendData() {
   // send score data
   switch (column) {
     case 0:
-      sendDigit(score % 100, column);
+      sendDigit(score % 10, column);
       break;
     case 1:
       sendDigit((score/10) % 10, column);
@@ -252,7 +266,7 @@ void sendNoteData() {
 void sendDigit(int n, int d) {
   // send digit data
   setPinLow(SCORE_SDO);
-  for (int i = 2; i > d; i--) {
+  for (int i = 0; i < d; i++) {
     sendClock(SCORE_CLK);
   }
 
@@ -260,7 +274,7 @@ void sendDigit(int n, int d) {
   sendClock(SCORE_CLK);
 
   setPinLow(SCORE_SDO);
-  for (int i = 0; i < d; i++) {
+  for (int i = 2; i > d; i--) {
     sendClock(SCORE_CLK);
   }
 
@@ -446,10 +460,8 @@ void setup() {
   }
   Serial.println("initialization done.");
 
+  Audio.begin(44100, 100);
   Timer3.attachInterrupt(sendData).start(1000); // multiplexing timer
-
-  // start the first song
-  changeSong();
 }
 
 void loop() {
