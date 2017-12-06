@@ -30,7 +30,7 @@
 #define SCORE_LOAD 31
 
 // INT PINS
-#define CHANGE_SONG_INT_PIN 22
+#define SONG_INT_PIN 22
 #define NOTE_INT_PIN 24
 
 // VOLTAGE REFERENCES
@@ -45,7 +45,6 @@ const int VOLUME = 1024;
 // global variables for keeping track of songs
 int score = 0;
 int song_num = 0;
-bool song_playing = true;
 
 // global variables for keeping track of notes
 bool notes[4][8];
@@ -126,7 +125,6 @@ void changeSong() {
   for (int i = 0; i < 7; i++) {
     updateNoteData();
   }
-  song_playing = true;
 
 }
 
@@ -178,7 +176,6 @@ void loadSongData() {
   char str[8];
   sprintf(str, "%d", song_num);
   strcat(str, ".wav");
-
   music_file = SD.open(str);
 }
 
@@ -444,11 +441,11 @@ void setup() {
 
   // set our input pins
   pinMode(NOTE_INT_PIN, INPUT);
-  pinMode(CHANGE_SONG_INT_PIN, INPUT);
+  pinMode(SONG_INT_PIN, INPUT);
 
   // attach interrupts
   attachInterrupt(digitalPinToInterrupt(NOTE_INT_PIN), checkNoteISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(CHANGE_SONG_INT_PIN), changeSongISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(SONG_INT_PIN), changeSongISR, FALLING);
 
   // initialize SD card
   Serial.begin(9600);
@@ -460,18 +457,16 @@ void setup() {
   }
   Serial.println("initialization done.");
 
-  Audio.begin(44100, 100);
-  Timer3.attachInterrupt(sendData).start(1000); // multiplexing timer
+  Audio.begin(44100, 100); // Audio at 44100 kHz and 100 ms of pre-buffering
+  Timer3.attachInterrupt(sendData).start(1000); // multiplexing timer at 1000 Hz
 }
 
 void loop() {
-  
   if (should_change_song) {
     changeSong();
   }
 
   if (should_check_note_hit) {
-    // check note hits if we need to
     checkNoteHit();
   }
 
@@ -482,13 +477,10 @@ void loop() {
     updateNoteReference();
   }
 
-  // send audio
   if (music_file.available()) {
+    // send audio
     music_file.read(audio_buffer, sizeof(audio_buffer));
     Audio.prepare(audio_buffer, BUFFER_SIZE, VOLUME);
     Audio.write(audio_buffer, BUFFER_SIZE);
-  } else {
-    song_playing = false;
   }
-
 }
